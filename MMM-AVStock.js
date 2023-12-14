@@ -3,6 +3,7 @@ Module.register("MMM-AVStock", {
         apiKey : "",
         timeFormat: "DD-MM HH:mm",
         symbols : ["AAPL", "GOOGL", "TSLA"],
+        symbolsApi : null,
         alias: [],
         locale: config.language,
         width: null,
@@ -61,8 +62,7 @@ Module.register("MMM-AVStock", {
         ];
     },
 
-    start: function() {
-        this.sendSocketNotification("INIT", this.config);
+    initStocks: function() {
         this.stocks = {};
         for (var i = 0; i < this.config.symbols.length; i++) {
             this.stocks[this.config.symbols[i]] = {
@@ -71,6 +71,11 @@ Module.register("MMM-AVStock", {
             };
         };
         this.log(this.stocks)
+    },
+
+    start: function() {
+        this.sendSocketNotification("INIT", this.config);
+        this.initStocks();
         this.loaded = false;
         if (!this.config.showPurchasePrices) this.config.tableHeaders.splice(this.config.tableHeaders.indexOf("pPrice"), 1);
         if (!this.config.showPerformance2Purchase) this.config.tableHeaders.splice(this.config.tableHeaders.indexOf("perf2P"), 1);
@@ -87,6 +92,12 @@ Module.register("MMM-AVStock", {
                 self.sendSocketNotification("GET_STOCKDATA", self.config);
                 self.log(this.name + " requesting stock data...")
             }, this.config.callInterval);
+
+            if (this.config.symbolApi) {
+                setInterval(() => {
+                    self.sendSocketNotification("GET_WATCHLIST", self.config);
+                }, this.config.symbolApi.callInterval);
+            }
         }
     },
 
@@ -418,6 +429,8 @@ Module.register("MMM-AVStock", {
                     self.updateChart(self.config.symbols[count]);
                 }, self.config.chartUpdateInterval);
             }
+        } else if (noti == "UPDATE_WATCHLIST") {
+            this.log(payload);
         }/* else if (noti == "UPDATE_QUOTES") {
             this.stocks[payload.symbol]["quotes"] = this.formatQuotes(payload);
             this.updateData(this.config.mode);

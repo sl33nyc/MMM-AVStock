@@ -1,5 +1,7 @@
 const yfinance2 = require('yahoo-finance2').default;
 const moment = require('moment');
+const https = require('https');
+const http = require('https');
 
 var NodeHelper = require("node_helper")
 
@@ -21,25 +23,28 @@ module.exports = NodeHelper.create({
         this.config = null;
         this.initial = true;
         this.stocks = {};
+        this.watchlist = {};  // url => last_modified
         this.isrunning = false;
     },
-
 
     socketNotificationReceived: function(noti, payload) {
         if (noti == "INIT" && !this.isRunning) {
             this.config = payload;
             //this.alpha = require('alphavantage')({ key: this.config.apiKey });
             console.log("[AVSTOCK] Initialized.");
+        } else if (noti == "GET_WATCHLIST") {
+            this.config = payload;
+            this.syncWatchlist(this.config.symbolApi.url);
         } else if (noti == "GET_STOCKDATA") {
             this.config = payload;
             this.log("Performing stock API calls...");
-            this.callAPI(this.config.symbols);
+            this.callStockDataAPI(this.config.symbols);
             var interval = this.config.callInterval
             this.log("Interval: " + Math.round(interval/1000));
             /*var self = this;
             clearInterval(this.callInterval); 
             this.callInterval = setInterval(() => {
-                self.callAPI(this.config.symbols);
+                self.callStockDataAPI(this.config.symbols);
             }, interval);*/
         }
     },
@@ -88,16 +93,16 @@ module.exports = NodeHelper.create({
         var interval = Math.round((24 * 60 * 60 * 1000) / (450 - callArray.length));          //500 calls allowed in 24 hours
         this.log("Interval: " + Math.round(interval/1000));
         var self = this;
-        this.callAPI(callArray[0]);
+        this.callStockDataAPI(callArray[0]);
         this.rc = setInterval(() => {
             counter = (counter == callArray.length-1) ? 0 : (counter + 1);
-            self.callAPI(callArray[counter]);
+            self.callStockDataAPI(callArray[counter]);
             self.log("Counter: " + counter);
         }, interval);
     },*/
 
     
-    callAPI: async function(symbols) {
+    callStockDataAPI: async function(symbols) {
         var self = this;
         for (var i = 0; i < symbols.length; i++) {
             var stock = {};
@@ -117,6 +122,47 @@ module.exports = NodeHelper.create({
 			this.log(stock);
             self.sendSocketNotification("UPDATE_STOCK", stock);
         }
+    },
+
+
+    syncWatchlist: async function(url) {
+        if (this.watchlist[url]) {
+            const lastModified = await this._checkWatchlistAPI(url);
+
+            if (lastModified <= this.watchlist[url].lastModified) {
+                return;
+            }
+        }
+
+        this.watchlist[url] = await this._getWatchlistAPI(url);
+        self.sendSocketNotification("UPDATE_WATCHLIST", watchlist[url].symbols);
+    },
+
+
+    _checkWatchlistAPI: async function(url) {
+        const api = url.startsWith("https") ? https : http;
+        return new Promise((resolve, reject) => {
+            api.request(url, {method: 'HEAD'}, res => 
+                resolve(new Date(res.headers['last-modified']))
+            ).end();
+        })
+    },
+
+
+    _getWatchlistAPI: async function(url) {
+        const api = url.startsWith("https") ? https : http;
+        return new Promise((resolve, reject) => {
+            api.get(url, res => {
+                const chunks = [];
+                res.on('data', chunk => chunks.concat(chunk));
+                res.on('end', () => {
+                    resolve({
+                        lastModified: new Date(res.headers['last-modified']),
+                        watchlist: JSON.parse(Buffer.concat(chunks)).symbols,
+                    });
+                });
+            }).end();
+        });
     },
 
 
