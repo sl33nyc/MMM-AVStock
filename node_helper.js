@@ -1,7 +1,7 @@
 const yfinance2 = require('yahoo-finance2').default;
 const moment = require('moment');
 const https = require('https');
-const http = require('https');
+const http = require('http');
 
 var NodeHelper = require("node_helper")
 
@@ -34,7 +34,7 @@ module.exports = NodeHelper.create({
             console.log("[AVSTOCK] Initialized.");
         } else if (noti == "GET_WATCHLIST") {
             this.config = payload;
-            this.syncWatchlist(this.config.symbolApi.url);
+            this.syncWatchlist(this.config.symbolsApi.url);
         } else if (noti == "GET_STOCKDATA") {
             this.config = payload;
             this.log("Performing stock API calls...");
@@ -126,16 +126,20 @@ module.exports = NodeHelper.create({
 
 
     syncWatchlist: async function(url) {
+        this.log(`syncWatchlist: ${url}`);
+        var self = this;
+
         if (this.watchlist[url]) {
             const lastModified = await this._checkWatchlistAPI(url);
 
             if (lastModified <= this.watchlist[url].lastModified) {
+                self.sendSocketNotification("UPDATE_WATCHLIST", this.watchlist[url]);
                 return;
             }
         }
 
         this.watchlist[url] = await this._getWatchlistAPI(url);
-        self.sendSocketNotification("UPDATE_WATCHLIST", watchlist[url].symbols);
+        self.sendSocketNotification("UPDATE_WATCHLIST", this.watchlist[url]);
     },
 
 
@@ -154,11 +158,11 @@ module.exports = NodeHelper.create({
         return new Promise((resolve, reject) => {
             api.get(url, res => {
                 const chunks = [];
-                res.on('data', chunk => chunks.concat(chunk));
+                res.on('data', chunk => chunks.push(chunk));
                 res.on('end', () => {
                     resolve({
                         lastModified: new Date(res.headers['last-modified']),
-                        watchlist: JSON.parse(Buffer.concat(chunks)).symbols,
+                        symbols: JSON.parse(Buffer.concat(chunks)).symbols,
                     });
                 });
             }).end();

@@ -14,12 +14,13 @@ Module.register("MMM-AVStock", {
         mode : "table",                  // "table", "ticker", "grid", "series"
         tickerDuration: 20,
         chartDays: 90,
-        tableHeaders: ["symbol", "price", "close", "change", "changeP", "pPrice", "perf2P", "volume"],
+        // tableHeaders: ["symbol", "price", "close", "change", "changeP", "pPrice", "perf2P", "volume"],
+        tableHeaders: ["symbol", "price", "changeP", "pPrice", "perf2P", "volume"],
         tableHeaderTitles: {
             symbol: "Symbol", 
             price: "Price", 
-            close: "Close", 
-            change: "CHG", 
+            // close: "Close", 
+            // change: "CHG", 
             changeP: "CHG%", 
             pPrice: "Purch", 
             perf2P: "Profit", 
@@ -74,6 +75,7 @@ Module.register("MMM-AVStock", {
     },
 
     start: function() {
+        this.lastModified = null;
         this.sendSocketNotification("INIT", this.config);
         this.initStocks();
         this.loaded = false;
@@ -93,10 +95,11 @@ Module.register("MMM-AVStock", {
                 self.log(this.name + " requesting stock data...")
             }, this.config.callInterval);
 
-            if (this.config.symbolApi) {
+            if (this.config.symbolsApi) {
                 setInterval(() => {
+                    self.log("Requesting watchlist");
                     self.sendSocketNotification("GET_WATCHLIST", self.config);
-                }, this.config.symbolApi.callInterval);
+                }, this.config.symbolsApi.callInterval);
             }
         }
     },
@@ -169,6 +172,26 @@ Module.register("MMM-AVStock", {
     },
 
 
+    recursivelyClearTable: function() {
+        const n = document.getElementById("AVSTOCK");
+
+        function clearInner(node) {
+          while (node.hasChildNodes()) {
+            clear(node.firstChild);
+          }
+        }
+        
+        function clear(node) {
+          while (node.hasChildNodes()) {
+            clear(node.firstChild);
+          }
+          node.parentNode.removeChild(node);
+        }
+        
+        clearInner(n);
+    },
+
+
     getDom: function() {
         var mode = this.config.mode;
         var wrapper = document.createElement("div");
@@ -211,10 +234,10 @@ Module.register("MMM-AVStock", {
             price.innerHTML = this.getStockData(stock, "price");
             price.id = mode + "_price_" + stock;
             
-            var prevClose = document.createElement("div");
-            prevClose.className = "close";
-            prevClose.innerHTML = this.getStockData(stock, "prevClose");
-            prevClose.id = mode + "_close_" + stock;
+            // var prevClose = document.createElement("div");
+            // prevClose.className = "close";
+            // prevClose.innerHTML = this.getStockData(stock, "prevClose");
+            // prevClose.id = mode + "_close_" + stock;
 
             var anchor1 = document.createElement("div");
             anchor1.className = "anchor item_sect";
@@ -224,10 +247,10 @@ Module.register("MMM-AVStock", {
             changeP.innerHTML = this.getStockData(stock, "changeP");
             changeP.id = mode + "_changeP_" + stock;
 
-            var change = document.createElement("div");
-            change.className = "change";
-            change.innerHTML = this.getStockData(stock, "change");
-            change.id = mode + "_change_" + stock;
+            // var change = document.createElement("div");
+            // change.className = "change";
+            // change.innerHTML = this.getStockData(stock, "change");
+            // change.id = mode + "_change_" + stock;
 
             var vol = document.createElement("div");
             vol.className = "volume xsmall";
@@ -256,7 +279,7 @@ Module.register("MMM-AVStock", {
                     anchor1.appendChild(price);
                     anchor1.appendChild(vol);
                     item.appendChild(anchor1);
-                    anchor2.appendChild(change);
+                    // anchor2.appendChild(change);
                     anchor2.appendChild(changeP);
                     item.appendChild(anchor2);            
                     if (this.config.showPurchasePrices) {
@@ -269,8 +292,8 @@ Module.register("MMM-AVStock", {
                     if (i % 2 != 0) item.style.backgroundColor = '#333';
                     item.appendChild(symbol);
                     item.appendChild(price);
-                    item.appendChild(prevClose);
-                    item.appendChild(change);
+                    // item.appendChild(prevClose);
+                    // item.appendChild(change);
                     item.appendChild(changeP);
                     if (this.config.showPurchasePrices) {
                         item.appendChild(purchasePrice);
@@ -282,7 +305,7 @@ Module.register("MMM-AVStock", {
                     anchor1.appendChild(symbol);
                     anchor1.appendChild(price);
                     item.appendChild(anchor1);
-                    anchor2.appendChild(change);
+                    // anchor2.appendChild(change);
                     anchor2.appendChild(changeP);
                     item.appendChild(anchor2);            
                     if (this.config.showPurchasePrices) {
@@ -381,13 +404,13 @@ Module.register("MMM-AVStock", {
             var changeP = document.getElementById(mode + "_changeP_" + stock);
             changeP.innerHTML = this.getStockData(stock, "changeP");
             
-            var change = document.getElementById(mode + "_change_" + stock);
-            change.innerHTML = this.getStockData(stock, "change");
+            // var change = document.getElementById(mode + "_change_" + stock);
+            // change.innerHTML = this.getStockData(stock, "change");
             
-            if (mode == "table") {
-                var prevClose = document.getElementById(mode + "_close_" + stock);
-                prevClose.innerHTML = this.getStockData(stock, "prevClose");
-            };
+            // if (mode == "table") {
+            //     var prevClose = document.getElementById(mode + "_close_" + stock);
+            //     prevClose.innerHTML = this.getStockData(stock, "prevClose");
+            // };
             
             if (mode != "ticker") {
                 var vol = document.getElementById(mode + "_volume_" + stock);
@@ -430,7 +453,16 @@ Module.register("MMM-AVStock", {
                 }, self.config.chartUpdateInterval);
             }
         } else if (noti == "UPDATE_WATCHLIST") {
-            this.log(payload);
+            const payloadLastModified = new Date(payload.lastModified);
+
+            if (!this.lastModified || payloadLastModified > this.lastModified) {
+                this.config.symbols = payload.symbols;
+                this.initStocks();
+                this.recursivelyClearTable();
+                this.updateDom();
+                this.sendSocketNotification("GET_STOCKDATA", this.config);
+                this.lastModified = payloadLastModified;
+            }
         }/* else if (noti == "UPDATE_QUOTES") {
             this.stocks[payload.symbol]["quotes"] = this.formatQuotes(payload);
             this.updateData(this.config.mode);
